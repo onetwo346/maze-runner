@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Runner - Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Orbitron', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #00ffcc;
+            text-shadow: 0 0 5px #00ffcc;
+            font-size: 1.2em;
+            z-index: 1;
+        }
+        #timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: #ff00ff;
+            text-shadow: 0 0 5px #ff00ff;
+            font-size: 1.2em;
+            z-index: 1;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="controls">Swipe or use WASD/Arrows to move</div>
+    <div id="timer">Time: 60</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas') });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Player (3D Character)
+        const player = {
+            x: 1,
+            z: 1,
+            angle: 0,
+            velocityX: 0,
+            velocityZ: 0,
+            speed: 0.12,
+            turnSpeed: 0.06
+        };
+        const characterGeometry = new THREE.CapsuleGeometry(0.3, 1, 32);
+        const characterMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+        const character = new THREE.Mesh(characterGeometry, characterMaterial);
+        character.position.set(player.x, 1, player.z);
+        scene.add(character);
+
+        // Camera (Third-person)
+        const cameraOffset = new THREE.Vector3(0, 3, -4);
+        updateCamera();
+
+        // Maze setup
+        const mazeSize = 10;
+        let maze = generateMaze(mazeSize, mazeSize);
+        const wallHeight = 3;
+        const wallGeometry = new THREE.BoxGeometry(1, wallHeight, 1);
+        const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.7 });
+        const floorGeometry = new THREE.PlaneGeometry(mazeSize * 2, mazeSize * 2);
+        const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x1a0b3d, side: THREE.DoubleSide });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = Math.PI / 2;
+        floor.position.y = -0.5;
+        scene.add(floor);
+
+        // Build maze walls
+        const walls = [];
+        for (let x = 0; x < mazeSize; x++) {
+            for (let z = 0; z < mazeSize; z++) {
+                if (maze[x][z] === 1) {
+                    const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    wall.position.set(x, wallHeight / 2, z);
+                    scene.add(wall);
+                    walls.push(wall);
+                }
+            }
+        }
+
+        // Core Exit
+        const exitGeometry = new THREE.SphereGeometry(0.3, 32, 32);
+        const exitMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+        const exit = new THREE.Mesh(exitGeometry, exitMaterial);
+        exit.position.set(mazeSize - 2, 0.5, mazeSize - 2);
+        scene.add(exit);
+
+        // Hazard (Chasing Orb)
+        const hazardGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+        const hazardMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const hazard = new THREE.Mesh(hazardGeometry, hazardMaterial);
+        hazard.position.set(2, 0.5, 2);
+        scene.add(hazard);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        // Controls
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'w': case 'ArrowUp': moveForward = true; break;
+                case 's': case 'ArrowDown': moveBackward = true; break;
+                case 'a': case 'ArrowLeft': moveLeft = true; break;
+                case 'd': case 'ArrowRight': moveRight = true; break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch (e.key) {
+                case 'w': case 'ArrowUp': moveForward = false; break;
+                case 's': case 'ArrowDown': moveBackward = false; break;
+                case 'a': case 'ArrowLeft': moveLeft = false; break;
+                case 'd': case 'ArrowRight': moveRight = false; break;
+            }
+        });
+
+        // Touch controls
+        let touchStartX = 0, touchStartY = 0, touchDeltaX = 0, touchDeltaY = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+        document.addEventListener('touchmove', (e) => {
+            touchDeltaX = e.touches[0].clientX - touchStartX;
+            touchDeltaY = e.touches[0].clientY - touchStartY;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+        document.addEventListener('touchend', () => {
+            touchDeltaX = 0;
+            touchDeltaY = 0;
+        });
+
+        // Timer
+        let timeLeft = 60;
+        const timerElement = document.getElementById('timer');
+        setInterval(() => {
+            timeLeft = Math.max(0, timeLeft - 1);
+            timerElement.textContent = `Time: ${timeLeft}`;
+            if (timeLeft === 0) {
+                alert('Time’s up! The void collapses.');
+                window.location.reload();
+            }
+        }, 1000);
+
+        // Maze generation
+        function generateMaze(width, height) {
+            const maze = Array(width).fill().map(() => Array(height).fill(1));
+            function carve(x, z) {
+                maze[x][z] = 0;
+                const directions = [[0, 2], [2, 0], [0, -2], [-2, 0]];
+                directions.sort(() => Math.random() - 0.5);
+                for (let [dx, dz] of directions) {
+                    const nx = x + dx, nz = z + dz;
+                    if (nx >= 0 && nx < width && nz >= 0 && nz < height && maze[nx][nz] === 1) {
+                        maze[x + dx / 2][z + dz / 2] = 0;
+                        carve(nx, nz);
+                    }
+                }
+            }
+            carve(1, 1);
+            return maze;
+        }
+
+        // Dynamic maze shifting
+        let shiftTimer = 0;
+        function shiftMaze() {
+            shiftTimer++;
+            if (shiftTimer % 180 === 0) { // Every 3 seconds (at 60 FPS)
+                const randomWall = walls[Math.floor(Math.random() * walls.length)];
+                scene.remove(randomWall);
+                walls.splice(walls.indexOf(randomWall), 1);
+                const newX = Math.floor(Math.random() * mazeSize);
+                const newZ = Math.floor(Math.random() * mazeSize);
+                if (maze[newX][newZ] === 0 && (newX !== Math.floor(player.x) || newZ !== Math.floor(player.z))) {
+                    const newWall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    newWall.position.set(newX, wallHeight / 2, newZ);
+                    scene.add(newWall);
+                    walls.push(newWall);
+                    maze[newX][newZ] = 1;
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Player movement
+            player.velocityX *= 0.9;
+            player.velocityZ *= 0.9;
+
+            if (moveForward) {
+                player.velocityX += Math.sin(player.angle) * player.speed;
+                player.velocityZ += Math.cos(player.angle) * player.speed;
+            }
+            if (moveBackward) {
+                player.velocityX -= Math.sin(player.angle) * player.speed;
+                player.velocityZ -= Math.cos(player.angle) * player.speed;
+            }
+            if (moveLeft) player.angle += player.turnSpeed;
+            if (moveRight) player.angle -= player.turnSpeed;
+
+            // Touch input
+            if (Math.abs(touchDeltaX) > 5) player.angle -= touchDeltaX * 0.005;
+            if (touchDeltaY < -20) {
+                player.velocityX += Math.sin(player.angle) * player.speed;
+                player.velocityZ += Math.cos(player.angle) * player.speed;
+            } else if (touchDeltaY > 20) {
+                player.velocityX -= Math.sin(player.angle) * player.speed;
+                player.velocityZ -= Math.cos(player.angle) * player.speed;
+            }
+
+            // Update position with collision
+            const newX = player.x + player.velocityX;
+            const newZ = player.z + player.velocityZ;
+            if (!collides(newX, newZ)) {
+                player.x = newX;
+                player.z = newZ;
+            } else {
+                player.velocityX = 0;
+                player.velocityZ = 0;
+            }
+
+            // Update character and camera
+            character.position.set(player.x, 1, player.z);
+            character.rotation.y = -player.angle;
+            updateCamera();
+
+            // Hazard movement (chases player)
+            const hazardSpeed = 0.03;
+            const dx = player.x - hazard.position.x;
+            const dz = player.z - hazard.position.z;
+            const distance = Math.hypot(dx, dz);
+            if (distance > 0.5) {
+                hazard.position.x += (dx / distance) * hazardSpeed;
+                hazard.position.z += (dz / distance) * hazardSpeed;
+            }
+            if (distance < 0.7) {
+                alert('Caught by the hazard! Game over.');
+                window.location.reload();
+            }
+
+            // Check win condition
+            if (Math.hypot(player.x - (mazeSize - 2), player.z - (mazeSize - 2)) < 0.6) {
+                alert('You escaped the cosmic labyrinth!');
+                window.location.reload();
+            }
+
+            // Shift maze
+            shiftMaze();
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Update camera
+        function updateCamera() {
+            const offset = cameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.angle);
+            camera.position.set(player.x + offset.x, offset.y, player.z + offset.z);
+            camera.lookAt(character.position);
+        }
+
+        // Collision detection
+        function collides(x, z) {
+            const gridX = Math.floor(x);
+            const gridZ = Math.floor(z);
+            return (
+                gridX < 0 || gridX >= mazeSize || gridZ < 0 || gridZ >= mazeSize || 
+                maze[gridX][gridZ] === 1
+            );
+        }
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>
