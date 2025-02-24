@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Runner - Intro</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle, #1a0b3d, #000);
+            font-family: 'Orbitron', sans-serif;
+            color: #00ffcc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -1;
+        }
+        .intro {
+            z-index: 1;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 4em;
+            text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc;
+            animation: glow 2s infinite alternate;
+        }
+        .start-btn {
+            padding: 20px 40px;
+            font-size: 2em;
+            background: none;
+            border: 2px solid #00ffcc;
+            color: #00ffcc;
+            cursor: pointer;
+            text-shadow: 0 0 5px #00ffcc;
+            animation: pulse 1.5s infinite;
+            transition: all 0.3s;
+        }
+        .start-btn:hover {
+            background: #00ffcc;
+            color: #1a0b3d;
+        }
+        .instructions {
+            margin: 20px 0;
+            font-size: 1.2em;
+            max-width: 600px;
+            text-shadow: 0 0 5px #00ffcc;
+        }
+        .credits {
+            position: absolute;
+            bottom: 10px;
+            font-size: 0.9em;
+            color: #00ffcc;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 10px #00ffcc; }
+            50% { transform: scale(1.05); box-shadow: 0 0 20px #00ffcc; }
+            100% { transform: scale(1); box-shadow: 0 0 10px #00ffcc; }
+        }
+        @keyframes glow {
+            0% { text-shadow: 0 0 10px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 30px #00ffcc; }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="bg"></canvas>
+    <div class="intro">
+        <h1>Maze Runner</h1>
+        <button class="start-btn" onclick="window.location.href='game.html'">Press to Start</button>
+        <div class="instructions">
+            Navigate the shifting cosmic labyrinth. Find the Core Exit before the void collapses. Swipe or use arrows to move.
+        </div>
+    </div>
+    <div class="credits">Designed by Kofi Fosu | comoscoderr@gmail.com</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Cosmic background with floating maze preview
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Add stars
+        const starGeometry = new THREE.BufferGeometry();
+        const starMaterial = new THREE.PointsMaterial({ color: 0x00ffcc, size: 0.1 });
+        const stars = new Float32Array(3000);
+        for (let i = 0; i < 3000; i += 3) {
+            stars[i] = (Math.random() - 0.5) * 200;
+            stars[i + 1] = (Math.random() - 0.5) * 200;
+            stars[i + 2] = (Math.random() - 0.5) * 200;
+        }
+        starGeometry.setAttribute('position', new THREE.BufferAttribute(stars, 3));
+        const starField = new THREE.Points(starGeometry, starMaterial);
+        scene.add(starField);
+
+        camera.position.z = 5;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            starField.rotation.y += 0.001;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>
