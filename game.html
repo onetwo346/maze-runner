@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="controls">Swipe or use arrows to move</div>
+    <div id="controls">Swipe or use WASD/Arrows to move</div>
     <canvas id="gameCanvas"></canvas>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
@@ -37,10 +37,25 @@
         const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas') });
         renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // Player
-        const player = { x: 1, y: 1, angle: 0 };
-        camera.position.set(player.x, 1.5, player.y);
-        camera.rotation.order = 'YXZ';
+        // Player (3D Character)
+        const player = {
+            x: 1,
+            z: 1,
+            angle: 0,
+            velocityX: 0,
+            velocityZ: 0,
+            speed: 0.1,
+            turnSpeed: 0.05
+        };
+        const characterGeometry = new THREE.CapsuleGeometry(0.3, 1, 32); // Simple humanoid shape
+        const characterMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+        const character = new THREE.Mesh(characterGeometry, characterMaterial);
+        character.position.set(player.x, 1, player.z);
+        scene.add(character);
+
+        // Camera (Third-person)
+        const cameraOffset = new THREE.Vector3(0, 3, -4); // Position behind and above character
+        updateCamera();
 
         // Maze generation (10x10 grid)
         const mazeSize = 10;
@@ -80,56 +95,77 @@
         scene.add(ambientLight);
 
         // Controls
-        let moveForward = false, moveBackward = false, turnLeft = false, turnRight = false;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowUp') moveForward = true;
-            if (e.key === 'ArrowDown') moveBackward = true;
-            if (e.key === 'ArrowLeft') turnLeft = true;
-            if (e.key === 'ArrowRight') turnRight = true;
+            switch (e.key) {
+                case 'w':
+                case 'ArrowUp':
+                    moveForward = true;
+                    break;
+                case 's':
+                case 'ArrowDown':
+                    moveBackward = true;
+                    break;
+                case 'a':
+                case 'ArrowLeft':
+                    moveLeft = true;
+                    break;
+                case 'd':
+                case 'ArrowRight':
+                    moveRight = true;
+                    break;
+            }
         });
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowUp') moveForward = false;
-            if (e.key === 'ArrowDown') moveBackward = false;
-            if (e.key === 'ArrowLeft') turnLeft = false;
-            if (e.key === 'ArrowRight') turnRight = false;
+            switch (e.key) {
+                case 'w':
+                case 'ArrowUp':
+                    moveForward = false;
+                    break;
+                case 's':
+                case 'ArrowDown':
+                    moveBackward = false;
+                    break;
+                case 'a':
+                case 'ArrowLeft':
+                    moveLeft = false;
+                    break;
+                case 'd':
+                case 'ArrowRight':
+                    moveRight = false;
+                    break;
+            }
         });
 
-        // Touch controls for iPhone
-        let touchStartX = 0, touchStartY = 0;
+        // Touch controls for iPhone (smooth swipe)
+        let touchStartX = 0, touchStartY = 0, touchDeltaX = 0, touchDeltaY = 0;
         document.addEventListener('touchstart', (e) => {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
         });
         document.addEventListener('touchmove', (e) => {
-            const deltaX = e.touches[0].clientX - touchStartX;
-            const deltaY = e.touches[0].clientY - touchStartY;
-            if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                player.angle -= deltaX * 0.005;
-            } else if (deltaY < -20) {
-                moveForward = true;
-            } else if (deltaY > 20) {
-                moveBackward = true;
-            }
+            touchDeltaX = e.touches[0].clientX - touchStartX;
+            touchDeltaY = e.touches[0].clientY - touchStartY;
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
         });
         document.addEventListener('touchend', () => {
-            moveForward = false;
-            moveBackward = false;
+            touchDeltaX = 0;
+            touchDeltaY = 0;
         });
 
         // Maze generation function
         function generateMaze(width, height) {
             const maze = Array(width).fill().map(() => Array(height).fill(1));
-            function carve(x, y) {
-                maze[x][y] = 0;
+            function carve(x, z) {
+                maze[x][z] = 0;
                 const directions = [[0, 2], [2, 0], [0, -2], [-2, 0]];
                 directions.sort(() => Math.random() - 0.5);
-                for (let [dx, dy] of directions) {
-                    const nx = x + dx, ny = y + dy;
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && maze[nx][ny] === 1) {
-                        maze[x + dx / 2][y + dy / 2] = 0;
-                        carve(nx, ny);
+                for (let [dx, dz] of directions) {
+                    const nx = x + dx, nz = z + dz;
+                    if (nx >= 0 && nx < width && nz >= 0 && nz < height && maze[nx][nz] === 1) {
+                        maze[x + dx / 2][z + dz / 2] = 0;
+                        carve(nx, nz);
                     }
                 }
             }
@@ -141,25 +177,49 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Movement
-            const speed = 0.05;
-            if (moveForward || moveBackward) {
-                const direction = moveForward ? 1 : -1;
-                const newX = player.x + Math.sin(player.angle) * speed * direction;
-                const newZ = player.y + Math.cos(player.angle) * speed * direction;
-                if (!collides(newX, newZ)) {
-                    player.x = newX;
-                    player.y = newZ;
-                }
-            }
-            if (turnLeft) player.angle += 0.05;
-            if (turnRight) player.angle -= 0.05;
+            // Smooth movement with velocity
+            player.velocityX *= 0.9; // Friction
+            player.velocityZ *= 0.9;
 
-            camera.position.set(player.x, 1.5, player.y);
-            camera.rotation.y = player.angle;
+            if (moveForward) {
+                player.velocityX += Math.sin(player.angle) * player.speed;
+                player.velocityZ += Math.cos(player.angle) * player.speed;
+            }
+            if (moveBackward) {
+                player.velocityX -= Math.sin(player.angle) * player.speed;
+                player.velocityZ -= Math.cos(player.angle) * player.speed;
+            }
+            if (moveLeft) player.angle += player.turnSpeed;
+            if (moveRight) player.angle -= player.turnSpeed;
+
+            // Touch input
+            if (Math.abs(touchDeltaX) > 5) player.angle -= touchDeltaX * 0.005;
+            if (touchDeltaY < -20) {
+                player.velocityX += Math.sin(player.angle) * player.speed;
+                player.velocityZ += Math.cos(player.angle) * player.speed;
+            } else if (touchDeltaY > 20) {
+                player.velocityX -= Math.sin(player.angle) * player.speed;
+                player.velocityZ -= Math.cos(player.angle) * player.speed;
+            }
+
+            // Update position with collision
+            const newX = player.x + player.velocityX;
+            const newZ = player.z + player.velocityZ;
+            if (!collides(newX, newZ)) {
+                player.x = newX;
+                player.z = newZ;
+            } else {
+                player.velocityX = 0;
+                player.velocityZ = 0;
+            }
+
+            // Update character and camera
+            character.position.set(player.x, 1, player.z);
+            character.rotation.y = -player.angle;
+            updateCamera();
 
             // Check win condition
-            if (Math.hypot(player.x - (mazeSize - 2), player.y - (mazeSize - 2)) < 0.5) {
+            if (Math.hypot(player.x - (mazeSize - 2), player.z - (mazeSize - 2)) < 0.6) {
                 alert('You escaped the cosmic labyrinth!');
                 window.location.reload();
             }
@@ -168,11 +228,21 @@
         }
         animate();
 
+        // Update camera to follow character
+        function updateCamera() {
+            const offset = cameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.angle);
+            camera.position.set(player.x + offset.x, offset.y, player.z + offset.z);
+            camera.lookAt(character.position);
+        }
+
         // Collision detection
         function collides(x, z) {
             const gridX = Math.floor(x);
             const gridZ = Math.floor(z);
-            return gridX < 0 || gridX >= mazeSize || gridZ < 0 || gridZ >= mazeSize || maze[gridX][gridZ] === 1;
+            return (
+                gridX < 0 || gridX >= mazeSize || gridZ < 0 || gridZ >= mazeSize || 
+                maze[gridX][gridZ] === 1
+            );
         }
 
         // Resize handler
